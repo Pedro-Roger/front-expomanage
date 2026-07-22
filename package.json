@@ -1,0 +1,21 @@
+{
+  "name": "front-expomanage",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspace @expomanage/web",
+    "build": "npm run build --workspace @expomanage/web",
+    "dev": "npm run dev --workspace @expomanage/web"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}
