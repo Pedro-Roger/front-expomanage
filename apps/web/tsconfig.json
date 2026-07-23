@@ -6,6 +6,9 @@
     "noEmit": true
   },
   "include": [
-    "src"
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/api.ts",
+    "src/vite-env.d.ts"
   ]
 }
