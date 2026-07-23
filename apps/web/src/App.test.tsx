@@ -65,7 +65,7 @@ describe("ExpoManage web app", () => {
   });
 
   it("logs out from the admin dashboard", async () => {
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     fireEvent.click(screen.getByRole("button", { name: "Sair" }));
@@ -189,7 +189,7 @@ describe("ExpoManage web app", () => {
   });
 
   it("renders only the admin dashboard on the admin route", () => {
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     expect(screen.getByText("ExpoManage")).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe("ExpoManage web app", () => {
 
   it("shows simultaneous events for the admin to manage separately", async () => {
     vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     const festivalStands = [{ ...sampleStands[2], eventSlug: "festival-camarao-2026" }];
     const feiraStands = [{ ...sampleStands[5], eventSlug: "feira-negocios-2026" }];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -257,7 +257,7 @@ describe("ExpoManage web app", () => {
   it("deletes an event through the admin API before removing it from the list", async () => {
     const user = userEvent.setup();
     vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     let deletedEvent = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -383,7 +383,7 @@ describe("ExpoManage web app", () => {
   });
 
   it("renders admin stand status labels without an old lead queue", () => {
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     fireEvent.click(screen.getByRole("button", { name: "Gerenciar stands" }));
@@ -395,7 +395,7 @@ describe("ExpoManage web app", () => {
   });
 
   it("keeps admin payment confirmation disabled until a receipt exists", async () => {
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     const purchase = buildPurchaseProfile({
       clientName: "Pedro Roger",
       clientEmail: "pedro@example.com",
@@ -444,7 +444,7 @@ describe("ExpoManage web app", () => {
 
   it("updates admin stand statuses", async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ message: "offline" }, 500)));
     renderAt("/admin");
 
@@ -458,7 +458,7 @@ describe("ExpoManage web app", () => {
 
   it("shows the stand manager with models, map preview and model creation", async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     await user.click(screen.getAllByRole("button", { name: "Gerenciar stands" })[0]);
@@ -486,7 +486,7 @@ describe("ExpoManage web app", () => {
 
   it("lets the admin create event stands from setup batches", async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     await user.click(screen.getByRole("button", { name: "Criar evento" }));
@@ -510,7 +510,7 @@ describe("ExpoManage web app", () => {
 
   it("lets the admin generate and copy a public sales form link", async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     await user.click(screen.getByRole("button", { name: "Gerenciar Expo Fortaleza 2026" }));
@@ -527,7 +527,7 @@ describe("ExpoManage web app", () => {
 
   it("lets the admin save the PIX copy-paste code by event", async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
     const pixValue = "000201PIX-NOVO-EVENTO";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -542,7 +542,7 @@ describe("ExpoManage web app", () => {
         return jsonResponse([{ slug: "expo-fortaleza-2026", name: "Expo Fortaleza 2026", year: 2026 }]);
       }
 
-      if (url === "http://api.test/stands" && method === "GET") {
+      if ((url === "http://api.test/stands" || url === "http://api.test/stands?eventSlug=expo-fortaleza-2026") && method === "GET") {
         return jsonResponse(sampleStands);
       }
 
@@ -764,7 +764,7 @@ describe("ExpoManage web app", () => {
         return jsonResponse({ token: "admin-token" });
       }
 
-      if (url === "http://api.test/purchases" && method === "GET") {
+      if ((url === "http://api.test/purchases" || url === "http://api.test/purchases?eventSlug=expo-fortaleza-2026") && method === "GET") {
         return jsonResponse(purchase ? [purchase] : []);
       }
 
@@ -782,6 +782,7 @@ describe("ExpoManage web app", () => {
       if (url === "http://api.test/purchases" && method === "POST") {
         const body = JSON.parse(String(init?.body ?? "{}")) as { contractUrl: string };
         purchase = buildPurchaseProfile({
+          eventSlug: "expo-fortaleza-2026",
           clientName: "Maria API",
           clientEmail: "maria.api@example.com",
           stand: { ...sampleStands[2], status: "reserved" },
@@ -790,7 +791,13 @@ describe("ExpoManage web app", () => {
         return jsonResponse(purchase);
       }
 
-      if (url === "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/receipt" && method === "POST") {
+      if (
+        (
+          url === "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/receipt" ||
+          url === "http://api.test/purchases/purchase-expo-fortaleza-2026-stand-c-02/installments/installment-1/receipt"
+        ) &&
+        method === "POST"
+      ) {
         purchase = {
           ...purchase!,
           installments: purchase!.installments.map((installment) =>
@@ -810,7 +817,13 @@ describe("ExpoManage web app", () => {
         return jsonResponse(purchase);
       }
 
-      if (url === "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/paid" && method === "PATCH") {
+      if (
+        (
+          url === "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/paid" ||
+          url === "http://api.test/purchases/purchase-expo-fortaleza-2026-stand-c-02/installments/installment-1/paid"
+        ) &&
+        method === "PATCH"
+      ) {
         purchase = {
           ...purchase!,
           installments: purchase!.installments.map((installment) =>
@@ -826,7 +839,10 @@ describe("ExpoManage web app", () => {
 
     const { unmount } = renderAt("/venda");
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("http://api.test/stands", expect.anything()));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/stands?eventSlug=expo-fortaleza-2026",
+      expect.anything()
+    ));
     fireEvent.click(screen.getByRole("button", { name: "Disponível C-02 64m² selecionado" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -873,13 +889,13 @@ describe("ExpoManage web app", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/receipt",
+        "http://api.test/purchases/purchase-expo-fortaleza-2026-stand-c-02/installments/installment-1/receipt",
         expect.objectContaining({ method: "POST" })
       )
     );
 
     unmount();
-    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    markAdminLoggedIn();
     renderAt("/admin");
 
     fireEvent.click(screen.getByRole("button", { name: "Ver pagamentos" }));
@@ -898,13 +914,18 @@ describe("ExpoManage web app", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://api.test/purchases/purchase-stand-c-02/installments/installment-1/paid",
+        "http://api.test/purchases/purchase-expo-fortaleza-2026-stand-c-02/installments/installment-1/paid",
         expect.objectContaining({ method: "PATCH" })
       )
     );
     expect(within(adminPayments).getByText("Paga")).toBeInTheDocument();
   });
 });
+
+function markAdminLoggedIn() {
+  window.sessionStorage.setItem("expomanage.adminSession", "true");
+  window.sessionStorage.setItem("expomanage.adminToken", "admin-token");
+}
 
 function renderAt(path: string) {
   window.history.pushState({}, "", path);

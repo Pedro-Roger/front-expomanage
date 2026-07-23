@@ -61,11 +61,13 @@ type ContractRecord = {
 };
 
 const defaultApiBaseUrl = import.meta.env.PROD ? "/api" : "http://localhost:3000";
+const adminTokenStorageKey = "expomanage.adminToken";
 let adminToken: string | null = null;
 
 export const expoApi = {
   async loginAdmin(email: string, password: string) {
     adminToken = await loginAdmin(email, password);
+    window.sessionStorage.setItem(adminTokenStorageKey, adminToken);
     return adminToken;
   },
   listEvents() {
@@ -201,10 +203,12 @@ async function getAdminToken(): Promise<string> {
     return adminToken;
   }
 
-  adminToken = await loginAdmin(
-    import.meta.env.VITE_ADMIN_EMAIL || "admin@expomanage.local",
-    import.meta.env.VITE_ADMIN_PASSWORD || "admin123"
-  );
+  adminToken = window.sessionStorage.getItem(adminTokenStorageKey);
+
+  if (!adminToken) {
+    throw new Error("Sessão administrativa expirada. Faça login novamente.");
+  }
+
   return adminToken;
 }
 

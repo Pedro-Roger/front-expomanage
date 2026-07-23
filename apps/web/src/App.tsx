@@ -78,6 +78,7 @@ type EventCreationStep = 1 | 2 | 3 | 4;
 
 const fallbackPublicAssetBaseUrl = "https://lc-web-quero.s3.us-east-2.amazonaws.com";
 const publicAssetBaseUrl = import.meta.env.VITE_S3_PUBLIC_BASE_URL || fallbackPublicAssetBaseUrl;
+const shouldUseDemoData = import.meta.env.MODE === "test";
 
 function standNumber(stand: Stand) {
   const numericCode = stand.code.match(/\d+/)?.[0] ?? "0";
@@ -113,13 +114,15 @@ function isFoodStand(stand: Stand) {
 }
 
 export function App() {
-  const [events, setEvents] = useState<ExpoEvent[]>([defaultExpoEvent]);
-  const [activeEventSlug, setActiveEventSlug] = useState(() => readEventSlugFromUrl() || defaultExpoEvent.slug);
-  const [stands, setStands] = useState<Stand[]>(sampleStands.map((stand) => ({ ...stand, eventSlug: defaultExpoEvent.slug })));
+  const [events, setEvents] = useState<ExpoEvent[]>(shouldUseDemoData ? [defaultExpoEvent] : []);
+  const [activeEventSlug, setActiveEventSlug] = useState(() => readEventSlugFromUrl() || (shouldUseDemoData ? defaultExpoEvent.slug : ""));
+  const [stands, setStands] = useState<Stand[]>(
+    shouldUseDemoData ? sampleStands.map((stand) => ({ ...stand, eventSlug: defaultExpoEvent.slug })) : []
+  );
   const [status, setStatus] = useState<StandStatus | "all">("all");
   const [size, setSize] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedStandId, setSelectedStandId] = useState("stand-c-02");
+  const [selectedStandId, setSelectedStandId] = useState(shouldUseDemoData ? "stand-c-02" : "");
   const [documentType, setDocumentType] = useState<DocumentType>("cpf");
   const [interestName, setInterestName] = useState("");
   const [interestDocument, setInterestDocument] = useState("");
@@ -146,7 +149,7 @@ export function App() {
   const [managedFormSlug, setManagedFormSlug] = useState("");
   const [managedFormLink, setManagedFormLink] = useState("");
   const [inactiveEventSlugs, setInactiveEventSlugs] = useState<string[]>([]);
-  const [managingEventSlug, setManagingEventSlug] = useState(defaultExpoEvent.slug);
+  const [managingEventSlug, setManagingEventSlug] = useState(shouldUseDemoData ? defaultExpoEvent.slug : "");
   const [purchases, setPurchases] = useState<ClientPurchaseProfile[]>([]);
   const [activePurchaseId, setActivePurchaseId] = useState("");
   const [clientDraft, setClientDraft] = useState<ClientDraft | null>(null);
@@ -160,7 +163,7 @@ export function App() {
   const isSalesRoute = routePath.startsWith("/venda");
   const isAdminRoute = routePath.startsWith("/admin") && adminSession;
   const isClientRoute = routePath.startsWith("/cliente");
-  const activeEvent = events.find((event) => event.slug === activeEventSlug) ?? defaultExpoEvent;
+  const activeEvent = events.find((event) => event.slug === activeEventSlug) ?? events[0] ?? null;
   const adminViewTitle: Record<AdminView, string> = {
     events: "Meus eventos",
     stands: "Gerenciar stands",
@@ -209,31 +212,37 @@ export function App() {
       if (isAdminRoute) {
         try {
           const apiEvents = await expoApi.listEvents();
+          const safeApiEvents = Array.isArray(apiEvents) ? apiEvents : [];
 
-          if (mounted && apiEvents.length > 0) {
-            setEvents(apiEvents);
+          if (mounted) {
+            setEvents(safeApiEvents);
           }
 
-          if (!apiEvents.some((event) => event.slug === eventSlug)) {
-            eventSlug = apiEvents[0]?.slug ?? defaultExpoEvent.slug;
+          if (!safeApiEvents.some((event) => event.slug === eventSlug)) {
+            eventSlug = safeApiEvents[0]?.slug ?? "";
             if (mounted) {
               setActiveEventSlug(eventSlug);
+              setManagingEventSlug(eventSlug);
             }
           }
         } catch {
-          // Local default event keeps the admin usable while API/auth is unavailable.
+          if (mounted && !shouldUseDemoData) {
+            setAdminNotice("Não consegui carregar os eventos da API.");
+          }
         }
       }
 
-      const apiEventSlug = eventSlug === defaultExpoEvent.slug ? undefined : eventSlug;
+      const apiEventSlug = eventSlug || undefined;
 
       try {
         const apiStands = await expoApi.listStands(apiEventSlug);
         if (mounted) {
-          setStands(apiStands);
+          setStands(Array.isArray(apiStands) ? apiStands : []);
         }
       } catch {
-        // Keep seeded local data available when the API is not running during development.
+        if (mounted && !shouldUseDemoData) {
+          setStands([]);
+        }
       }
 
       if (!isAdminRoute) {
@@ -251,7 +260,9 @@ export function App() {
           setPaymentConfig(apiPaymentConfig);
         }
       } catch {
-        // Admin sync needs a token; local state keeps the screen usable if auth/API is unavailable.
+        if (mounted && !shouldUseDemoData) {
+          setPurchases([]);
+        }
       }
     }
 
@@ -300,6 +311,7 @@ export function App() {
 
   function logout() {
     window.sessionStorage.removeItem("expomanage.adminSession");
+    window.sessionStorage.removeItem("expomanage.adminToken");
     setAdminSession(false);
     setIsAdminSidebarOpen(false);
     setActivePurchaseId("");
@@ -482,6 +494,11 @@ export function App() {
 
   function addStandModel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!activeEvent) {
+      setAdminNotice("Crie ou selecione um evento antes de adicionar modelos de stands.");
+      return;
+    }
+
     const data = new FormData(event.currentTarget);
     const type = String(data.get("standModelName") ?? "").trim();
     const width = Number(data.get("standModelWidth"));
@@ -520,7 +537,7 @@ export function App() {
       pixCopyPaste: defaultPixCopyPaste,
       installments: defaultPaymentInstallments()
     });
-    setAdminNotice(event ? `Administrando ${event.name}.` : "Novo evento selecionado.");
+    setAdminNotice(event ? `Administrando ${event.name}.` : "Selecione ou crie um evento.");
     setIsAdminSidebarOpen(false);
   }
 
@@ -580,12 +597,19 @@ export function App() {
       setPaymentConfig(savedPaymentConfig);
       setSelectedStandId(savedStands[0]?.id ?? "");
     } catch {
-      // Local generation keeps the admin flow usable while the API is unavailable.
+      setAdminNotice("Não consegui salvar o evento na API. Confira a conexão e tente novamente.");
     }
   }
 
   function generateSalesFormLink() {
-    const link = buildSalesFormLink(managingEventSlug || activeEventSlug);
+    const targetSlug = managingEventSlug || activeEventSlug;
+
+    if (!targetSlug) {
+      setAdminNotice("Crie ou selecione um evento antes de gerar o link.");
+      return;
+    }
+
+    const link = buildSalesFormLink(targetSlug);
     setSalesFormLink(link);
     setAdminNotice("Link de venda gerado.");
   }
@@ -601,6 +625,11 @@ export function App() {
   }
 
   function copyManagedFormLink() {
+    if (!managedEvent) {
+      setAdminNotice("Selecione um evento antes de copiar o link.");
+      return;
+    }
+
     const slug = slugify(managedFormSlug || managedEvent.slug);
     const link = buildSalesFormLink(slug);
     setManagedFormLink(link);
@@ -609,6 +638,11 @@ export function App() {
   }
 
   function saveManagedFormUrl() {
+    if (!managedEvent) {
+      setAdminNotice("Selecione um evento antes de alterar a URL.");
+      return;
+    }
+
     const nextSlug = slugify(managedFormSlug);
 
     if (!nextSlug) {
@@ -632,6 +666,11 @@ export function App() {
   }
 
   function toggleManagedEventActive() {
+    if (!managedEvent) {
+      setAdminNotice("Selecione um evento antes de alterar o status.");
+      return;
+    }
+
     setInactiveEventSlugs((current) =>
       current.includes(managedEvent.slug)
         ? current.filter((slug) => slug !== managedEvent.slug)
@@ -640,8 +679,13 @@ export function App() {
   }
 
   async function removeManagedEvent() {
+    if (!managedEvent) {
+      setAdminNotice("Selecione um evento antes de excluir.");
+      return;
+    }
+
     const remainingEvents = events.filter((event) => event.slug !== managedEvent.slug);
-    const nextEvent = remainingEvents[0] ?? defaultExpoEvent;
+    const nextEvent = remainingEvents[0] ?? null;
 
     try {
       await expoApi.deleteEvent(managedEvent.slug);
@@ -650,12 +694,14 @@ export function App() {
       return;
     }
 
-    setEvents(remainingEvents.length ? remainingEvents : [defaultExpoEvent]);
+    setEvents(remainingEvents);
     setInactiveEventSlugs((current) => current.filter((slug) => slug !== managedEvent.slug));
-    setActiveEventSlug(nextEvent.slug);
-    setManagingEventSlug(nextEvent.slug);
-    setManagedFormSlug(nextEvent.slug);
-    setManagedFormLink(buildSalesFormLink(nextEvent.slug));
+    setActiveEventSlug(nextEvent?.slug ?? "");
+    setManagingEventSlug(nextEvent?.slug ?? "");
+    setManagedFormSlug(nextEvent?.slug ?? "");
+    setManagedFormLink(nextEvent ? buildSalesFormLink(nextEvent.slug) : "");
+    setStands([]);
+    setPurchases([]);
     setAdminView("events");
     setAdminNotice(`${managedEvent.name} excluído.`);
   }
@@ -675,6 +721,13 @@ export function App() {
   }
 
   async function savePaymentConfig() {
+    if (!activeEventSlug) {
+      setAdminNotice("Crie ou selecione um evento antes de salvar o PIX.");
+      setPaymentSaveState("error");
+      setPaymentSaveMessage("Nenhum evento selecionado.");
+      return;
+    }
+
     const pixCopyPaste = paymentConfig.pixCopyPaste.trim();
 
     if (!pixCopyPaste) {
@@ -968,7 +1021,7 @@ export function App() {
               </div>
               <div>
                 <span>ExpoManage</span>
-                <strong>Festival do Camarão 2026</strong>
+                <strong>Painel de eventos</strong>
               </div>
             </div>
             <div className="login-access-card">
@@ -1026,7 +1079,7 @@ export function App() {
             <section className="map-panel" aria-label="Mapa de Estandes">
               <div className="panel-title">
                 <Map size={18} />
-                <h3>Layout do Festival do Camarão</h3>
+                <h3>{activeEvent ? `Layout do ${activeEvent.name}` : "Layout do evento"}</h3>
               </div>
               <div className="legend">
                 <span className="legend-item available">Disponível</span>
@@ -1416,6 +1469,9 @@ export function App() {
               <Building2 size={18} />
               <h3>Meus eventos</h3>
             </div>
+            {events.length === 0 ? (
+              <p className="empty-state">Nenhum evento cadastrado ainda. Crie o primeiro evento para começar.</p>
+            ) : null}
             <div className="event-card-grid">
               {events.map((event) => (
                 <article className={`event-card ${event.slug === activeEventSlug ? "is-active" : ""}`} key={event.slug}>
@@ -1452,6 +1508,7 @@ export function App() {
                   <label>
                     Selecione o evento
                     <select value={activeEventSlug} onChange={(event) => selectActiveEvent(event.target.value)}>
+                      <option value="">Nenhum evento selecionado</option>
                       {events.map((event) => (
                         <option key={event.slug} value={event.slug}>{event.name}</option>
                       ))}
@@ -1476,6 +1533,7 @@ export function App() {
                 </div>
               </div>
 
+              {activeEvent ? (
               <div className="stand-manager-layout">
                 <div className="stand-model-grid">
                   {eventBatches.map((batch, index) => (
@@ -1530,6 +1588,9 @@ export function App() {
                   </aside>
                 ) : null}
               </div>
+              ) : (
+                <p className="empty-state">Crie ou selecione um evento para configurar os stands.</p>
+              )}
             </section>
 
             <div className="stats-grid">
@@ -1695,7 +1756,7 @@ export function App() {
           </section>
           ) : null}
 
-          {adminView === "eventManage" ? (
+          {adminView === "eventManage" && managedEvent ? (
           <section className="setup-panel event-manage-panel" aria-label={`Gerenciamento de ${managedEvent.name}`}>
             <div className="panel-title">
               <Building2 size={18} />
@@ -1793,8 +1854,8 @@ export function App() {
             </div>
             <div className="danger-zone">
               <div>
-                <strong>Excluir evento da lista</strong>
-                <p>Remove este evento da área administrativa local.</p>
+                <strong>Excluir evento</strong>
+                <p>Remove este evento e os dados vinculados no banco.</p>
               </div>
               <button className="danger-action" type="button" onClick={removeManagedEvent}>
                 <Trash2 size={17} />
@@ -1802,6 +1863,15 @@ export function App() {
               </button>
             </div>
           </section>
+          ) : null}
+
+          {adminView === "eventManage" && !managedEvent ? (
+            <section className="setup-panel event-manage-panel">
+              <p className="empty-state">Nenhum evento selecionado para gerenciar.</p>
+              <button className="primary-action" type="button" onClick={openEventCreationWizard}>
+                Criar evento
+              </button>
+            </section>
           ) : null}
 
           {adminView === "stands" ? (
@@ -1821,7 +1891,11 @@ export function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stands.map((stand) => (
+                  {stands.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>Nenhum stand cadastrado para este evento.</td>
+                    </tr>
+                  ) : stands.map((stand) => (
                     <tr key={stand.id}>
                       <td><strong>{stand.code}</strong><span>{stand.id}</span></td>
                       <td>{stand.type} / {stand.size}</td>
