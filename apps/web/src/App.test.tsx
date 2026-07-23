@@ -254,6 +254,66 @@ describe("ExpoManage web app", () => {
     expect(within(eventManager).getByRole("button", { name: "Inativar evento" })).toBeInTheDocument();
   });
 
+  it("deletes an event through the admin API before removing it from the list", async () => {
+    const user = userEvent.setup();
+    vi.stubEnv("VITE_API_BASE_URL", "http://api.test");
+    window.sessionStorage.setItem("expomanage.adminSession", "true");
+    let deletedEvent = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url === "http://api.test/auth/login" && method === "POST") {
+        return jsonResponse({ token: "admin-token" });
+      }
+
+      if (url === "http://api.test/events" && method === "GET") {
+        const apiEvents = [
+          { slug: "expo-fortaleza-2026", name: "Expo Fortaleza 2026", year: 2026 },
+          { slug: "evento-temporario-2027", name: "Evento Temporário 2027", year: 2027 }
+        ];
+        return jsonResponse(deletedEvent ? apiEvents.slice(0, 1) : apiEvents);
+      }
+
+      if (url === "http://api.test/stands?eventSlug=expo-fortaleza-2026" || url === "http://api.test/stands?eventSlug=evento-temporario-2027") {
+        return jsonResponse(sampleStands);
+      }
+
+      if (url === "http://api.test/purchases?eventSlug=expo-fortaleza-2026" || url === "http://api.test/purchases?eventSlug=evento-temporario-2027") {
+        return jsonResponse([]);
+      }
+
+      if (url === "http://api.test/events/expo-fortaleza-2026/payment-config" || url === "http://api.test/events/evento-temporario-2027/payment-config") {
+        return jsonResponse({
+          eventSlug: url.includes("temporario") ? "evento-temporario-2027" : "expo-fortaleza-2026",
+          pixCopyPaste: "PIX-EVENTO",
+          installments: defaultPaymentInstallments()
+        });
+      }
+
+      if (url === "http://api.test/events/evento-temporario-2027" && method === "DELETE") {
+        expect(init?.headers).toEqual(expect.any(Headers));
+        deletedEvent = true;
+        return jsonResponse({ deleted: true, slug: "evento-temporario-2027" });
+      }
+
+      return jsonResponse({ message: `Unexpected ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderAt("/admin");
+
+    const eventsPanel = await screen.findByLabelText("Eventos cadastrados");
+    await user.click(within(eventsPanel).getByRole("button", { name: "Gerenciar Evento Temporário 2027" }));
+    await user.click(await screen.findByRole("button", { name: "Excluir evento" }));
+    await user.click(screen.getByRole("button", { name: "Meus eventos" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/events/evento-temporario-2027",
+      expect.objectContaining({ method: "DELETE" })
+    );
+    await waitFor(() => expect(screen.queryByText("Evento Temporário 2027")).not.toBeInTheDocument());
+  });
+
   it("filters public stands by available status", async () => {
     const user = userEvent.setup();
     renderAt("/venda");

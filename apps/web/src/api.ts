@@ -74,6 +74,13 @@ export const expoApi = {
   upsertEvent(input: Pick<ExpoEvent, "name"> & Partial<Pick<ExpoEvent, "slug" | "year">>) {
     return request<ExpoEvent>("/events", { method: "POST", body: JSON.stringify(input) }, true);
   },
+  deleteEvent(eventSlug: string) {
+    return request<{ deleted: boolean; slug: string }>(
+      `/events/${encodeURIComponent(eventSlug)}`,
+      { method: "DELETE" },
+      true
+    );
+  },
   generateEventStands(eventSlug: string, batches: EventStandBatch[]) {
     return request<Stand[]>(
       `/events/${encodeURIComponent(eventSlug)}/stands/generate`,

@@ -639,9 +639,16 @@ export function App() {
     );
   }
 
-  function removeManagedEvent() {
+  async function removeManagedEvent() {
     const remainingEvents = events.filter((event) => event.slug !== managedEvent.slug);
     const nextEvent = remainingEvents[0] ?? defaultExpoEvent;
+
+    try {
+      await expoApi.deleteEvent(managedEvent.slug);
+    } catch {
+      setAdminNotice("Não consegui excluir o evento na API. Tente novamente.");
+      return;
+    }
 
     setEvents(remainingEvents.length ? remainingEvents : [defaultExpoEvent]);
     setInactiveEventSlugs((current) => current.filter((slug) => slug !== managedEvent.slug));
@@ -650,7 +657,7 @@ export function App() {
     setManagedFormSlug(nextEvent.slug);
     setManagedFormLink(buildSalesFormLink(nextEvent.slug));
     setAdminView("events");
-    setAdminNotice(`${managedEvent.name} removido da lista local.`);
+    setAdminNotice(`${managedEvent.name} excluído.`);
   }
 
   function goToEventCreationStep(nextStep: EventCreationStep) {
