@@ -60,7 +60,7 @@ type ContractRecord = {
   contractUrl: string;
 };
 
-const defaultApiBaseUrl = "http://localhost:3000";
+const defaultApiBaseUrl = import.meta.env.PROD ? "/api" : "http://localhost:3000";
 let adminToken: string | null = null;
 
 export const expoApi = {
