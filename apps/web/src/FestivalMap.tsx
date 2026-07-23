@@ -47,10 +47,11 @@ function groupStands(stands: Stand[]): StandGroup {
   const business = [...stands].filter(isBusinessStand).sort(sortByStandNumber);
   const food = [...stands].filter(isFoodStand).sort(sortByStandNumber);
   const fallback = [...stands].filter((stand) => !isBusinessStand(stand) && !isFoodStand(stand));
+  const businessMidpoint = Math.ceil(business.length / 2);
 
   return {
-    businessLeft: business.filter((stand) => standNumber(stand) <= 40).sort((first, second) => standNumber(second) - standNumber(first)),
-    businessRight: business.filter((stand) => standNumber(stand) > 40),
+    businessLeft: business.slice(0, businessMidpoint).reverse(),
+    businessRight: business.slice(businessMidpoint),
     food,
     fallback
   };
@@ -166,7 +167,7 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
               </div>
 
               <div className="festival-map-business-grid">
-                <div className="festival-map-column">
+                <div className="festival-map-column" aria-label="Coluna esquerda da Feira de Negócios">
                   {groups.businessLeft.map((stand) => (
                     <StandButton
                       key={stand.id}
@@ -184,7 +185,7 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
                   ))}
                 </div>
 
-                <div className="festival-map-column">
+                <div className="festival-map-column" aria-label="Coluna direita da Feira de Negócios">
                   {groups.businessRight.map((stand) => (
                     <StandButton
                       key={stand.id}

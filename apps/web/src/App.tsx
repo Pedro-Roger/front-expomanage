@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
 import {
   Bell,
   BookmarkPlus,
@@ -46,6 +46,7 @@ import {
   type EventPaymentConfig,
   type EventStandBatch,
   type ExpoEvent,
+  type InstallmentPlanItem,
   type SignatureRecord,
   type Stand,
   type StandStatus
@@ -92,7 +93,15 @@ function formatStandModelSize(size: string) {
   return `${match[1]}m x ${match[2]}m`;
 }
 
+function cloneEventBatches(batches: EventStandBatch[]): EventStandBatch[] {
+  return batches.map((batch) => ({
+    ...batch,
+    installments: batch.installments?.map((installment) => ({ ...installment }))
+  }));
+}
+
 export function App() {
+  const signatureSectionRef = useRef<HTMLElement>(null);
   const [events, setEvents] = useState<ExpoEvent[]>(shouldUseDemoData ? [defaultExpoEvent] : []);
   const [activeEventSlug, setActiveEventSlug] = useState(() => readEventSlugFromUrl() || (shouldUseDemoData ? defaultExpoEvent.slug : ""));
   const [stands, setStands] = useState<Stand[]>(
@@ -119,7 +128,7 @@ export function App() {
   const [eventName, setEventName] = useState("");
   const [eventFormSlug, setEventFormSlug] = useState("");
   const [eventCreationStep, setEventCreationStep] = useState<EventCreationStep>(1);
-  const [eventBatches, setEventBatches] = useState<EventStandBatch[]>(defaultEventStandBatches);
+  const [eventBatches, setEventBatches] = useState<EventStandBatch[]>(() => cloneEventBatches(defaultEventStandBatches));
   const [paymentConfig, setPaymentConfig] = useState<EventPaymentConfig>({
     eventSlug: defaultExpoEvent.slug,
     pixCopyPaste: "",
@@ -269,15 +278,16 @@ export function App() {
       return;
     }
 
-    setLastCnpjLookup(digits);
     setCnpjLookupNotice("Buscando dados do CNPJ...");
 
     try {
       const company = await expoApi.lookupCnpj(digits);
       setInterestName(company.legalName);
+      setLastCnpjLookup(digits);
       setCnpjLookupNotice("Dados do CNPJ preenchidos automaticamente.");
     } catch {
-      setCnpjLookupNotice("CNPJ não encontrado na base da Receita importada.");
+      setLastCnpjLookup("");
+      setCnpjLookupNotice("Não foi possível consultar este CNPJ agora.");
     }
   }
 
@@ -380,6 +390,7 @@ export function App() {
       type: "success",
       messages: ["Cadastro concluído. Agora assine o contrato para abrir seu perfil de pagamentos."]
     });
+    signatureSectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }
 
   function reserveStand(stand: Stand) {
@@ -431,7 +442,62 @@ export function App() {
     setEventBatches((current) =>
       current.map((batch, batchIndex) =>
         batchIndex === index
-          ? { ...batch, [field]: field === "quantity" ? Number(value) : value }
+          ? { ...batch, [field]: field === "quantity" || field === "price" ? Number(value) : value }
+          : batch
+      )
+    );
+  }
+
+  function updateBatchInstallment(
+    batchIndex: number,
+    installmentIndex: number,
+    field: keyof InstallmentPlanItem,
+    value: string
+  ) {
+    setEventBatches((current) =>
+      current.map((batch, currentBatchIndex) =>
+        currentBatchIndex === batchIndex
+          ? {
+              ...batch,
+              installments: (batch.installments ?? []).map((installment, currentInstallmentIndex) =>
+                currentInstallmentIndex === installmentIndex
+                  ? { ...installment, [field]: field === "amount" ? Number(value) : value }
+                  : installment
+              )
+            }
+          : batch
+      )
+    );
+  }
+
+  function addBatchInstallment(batchIndex: number) {
+    setEventBatches((current) =>
+      current.map((batch, currentBatchIndex) =>
+        currentBatchIndex === batchIndex
+          ? {
+              ...batch,
+              installments: [
+                ...(batch.installments ?? []),
+                {
+                  label: `${(batch.installments?.length ?? 0) + 1}ª parcela`,
+                  amount: 0,
+                  dueLabel: ""
+                }
+              ]
+            }
+          : batch
+      )
+    );
+  }
+
+  function removeBatchInstallment(batchIndex: number, installmentIndex: number) {
+    setEventBatches((current) =>
+      current.map((batch, currentBatchIndex) =>
+        currentBatchIndex === batchIndex
+          ? {
+              ...batch,
+              installments: (batch.installments ?? []).filter((_, index) => index !== installmentIndex)
+            }
           : batch
       )
     );
@@ -441,7 +507,7 @@ export function App() {
     setEventName("");
     setEventFormSlug("");
     setEventCreationStep(1);
-    setEventBatches(defaultEventStandBatches);
+    setEventBatches(cloneEventBatches(defaultEventStandBatches));
     setPaymentConfig({
       eventSlug: "",
       pixCopyPaste: "",
@@ -486,9 +552,12 @@ export function App() {
     setEventBatches((current) => [
       ...current,
       {
+        id: slugify(type),
         type,
         size: `${width}x${length}`,
-        quantity
+        quantity,
+        price: 0,
+        installments: defaultPaymentInstallments()
       }
     ]);
     setStandManagerMode("models");
@@ -792,8 +861,8 @@ export function App() {
           signaturePath: serializeSignature(signaturePoints)
         });
         setSignatureRecord(record);
-        setSignatureFeedback({ type: "success", messages: ["Assinatura digital registrada."] });
-        let contractUrl = buildPublicAssetUrl(`contracts/contract-${selectedSellableStand.code}.docx`);
+        setSignatureFeedback({ type: "success", messages: ["Assinatura registrada. Gerando contrato..."] });
+        let contractUrl: string;
 
         try {
           const contract = await expoApi.generateContract({
@@ -817,8 +886,13 @@ export function App() {
           });
           contractUrl = contract.contractUrl;
         } catch {
-          // Missing APCC signature/S3 config should not block the immediate payment step.
+          setSignatureFeedback({
+            type: "error",
+            messages: ["Não foi possível gerar o contrato. Tente assinar novamente."]
+          });
+          return;
         }
+        setSignatureFeedback({ type: "success", messages: ["Assinatura digital registrada."] });
 
         const localPurchase = buildPurchaseProfile({
           eventSlug: activeEventSlug,
@@ -1183,7 +1257,11 @@ export function App() {
             </div>
           </section>
 
-          <section className="signature-panel" aria-label="Assinatura Digital do Contrato">
+          <section
+            className="signature-panel"
+            ref={signatureSectionRef}
+            aria-label="Assinatura Digital do Contrato"
+          >
             <div className="panel-title">
               <FileSignature size={18} />
               <h3>Assinatura Digital do Contrato</h3>
@@ -1192,11 +1270,21 @@ export function App() {
               <div className="form-grid">
                 <label>
                   Assinante
-                  <input name="signerName" placeholder="Nome de quem assina" />
+                  <input
+                    name="signerName"
+                    placeholder="Preenchido pelo formulário"
+                    readOnly
+                    value={clientDraft?.name ?? ""}
+                  />
                 </label>
                 <label>
                   Documento do assinante
-                  <input name="signerDocument" placeholder="CPF ou CNPJ" />
+                  <input
+                    name="signerDocument"
+                    placeholder="Preenchido pelo formulário"
+                    readOnly
+                    value={clientDraft?.document ?? ""}
+                  />
                 </label>
               </div>
               <div className="locked-selection">
@@ -1359,9 +1447,6 @@ export function App() {
               <Building2 size={18} />
               <h3>Meus eventos</h3>
             </div>
-            {events.length === 0 ? (
-              <p className="empty-state">Nenhum evento cadastrado ainda. Crie o primeiro evento para começar.</p>
-            ) : null}
             <div className="event-card-grid">
               {events.map((event) => (
                 <article className={`event-card ${event.slug === activeEventSlug ? "is-active" : ""}`} key={event.slug}>
@@ -1567,6 +1652,88 @@ export function App() {
                             onChange={(event) => updateEventBatch(index, "type", event.target.value)}
                           />
                         </label>
+                        <label>
+                          Prefixo lote {index + 1}
+                          <input
+                            maxLength={4}
+                            value={batch.prefix ?? ""}
+                            onChange={(event) => updateEventBatch(index, "prefix", event.target.value)}
+                          />
+                        </label>
+                        <label>
+                          Preço lote {index + 1}
+                          <input
+                            min="0"
+                            step="0.01"
+                            type="number"
+                            value={batch.price ?? 0}
+                            onChange={(event) => updateEventBatch(index, "price", event.target.value)}
+                          />
+                        </label>
+                        <div className="batch-installments" aria-label={`Parcelas do lote ${index + 1}`}>
+                          <div className="batch-installments-head">
+                            <span>Parcelas</span>
+                            <button
+                              className="secondary-action"
+                              type="button"
+                              onClick={() => addBatchInstallment(index)}
+                            >
+                              Adicionar parcela
+                            </button>
+                          </div>
+                          {(batch.installments ?? []).map((installment, installmentIndex) => (
+                            <div className="batch-installment-row" key={`${batch.id ?? index}-${installmentIndex}`}>
+                              <label>
+                                Nome parcela {installmentIndex + 1} do lote {index + 1}
+                                <input
+                                  value={installment.label}
+                                  onChange={(event) => updateBatchInstallment(
+                                    index,
+                                    installmentIndex,
+                                    "label",
+                                    event.target.value
+                                  )}
+                                />
+                              </label>
+                              <label>
+                                Valor parcela {installmentIndex + 1} do lote {index + 1}
+                                <input
+                                  min="0"
+                                  step="0.01"
+                                  type="number"
+                                  value={installment.amount}
+                                  onChange={(event) => updateBatchInstallment(
+                                    index,
+                                    installmentIndex,
+                                    "amount",
+                                    event.target.value
+                                  )}
+                                />
+                              </label>
+                              <label>
+                                Vencimento parcela {installmentIndex + 1} do lote {index + 1}
+                                <input
+                                  value={installment.dueLabel}
+                                  onChange={(event) => updateBatchInstallment(
+                                    index,
+                                    installmentIndex,
+                                    "dueLabel",
+                                    event.target.value
+                                  )}
+                                />
+                              </label>
+                              {(batch.installments?.length ?? 0) > 1 ? (
+                                <button
+                                  className="batch-installment-remove"
+                                  type="button"
+                                  onClick={() => removeBatchInstallment(index, installmentIndex)}
+                                >
+                                  Remover parcela
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -521,6 +521,23 @@ describe("ExpoManage web app", () => {
     expect(within(standsAdmin).getAllByText("Feira Gastronômica / Barraca")).toHaveLength(10);
   });
 
+  it("configures price and installments for each stand batch", async () => {
+    const user = userEvent.setup();
+    markAdminLoggedIn();
+    renderAt("/admin");
+
+    await user.click(screen.getByRole("button", { name: "Criar evento" }));
+    await user.type(screen.getByLabelText("Nome do novo evento"), "Festival 2027");
+    await user.click(screen.getByRole("button", { name: "Avançar para stands" }));
+    await user.clear(screen.getByLabelText("Preço lote 1"));
+    await user.type(screen.getByLabelText("Preço lote 1"), "4200");
+    await user.clear(screen.getByLabelText("Valor parcela 1 do lote 1"));
+    await user.type(screen.getByLabelText("Valor parcela 1 do lote 1"), "1200");
+
+    expect(screen.getByLabelText("Preço lote 1")).toHaveValue(4200);
+    expect(screen.getByLabelText("Valor parcela 1 do lote 1")).toHaveValue(1200);
+  });
+
   it("lets the admin generate and copy a public sales form link", async () => {
     const user = userEvent.setup();
     markAdminLoggedIn();
@@ -600,6 +617,7 @@ describe("ExpoManage web app", () => {
   it("captures a digital signature with location, date, and time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-18T23:40:00.000Z"));
+    stubSuccessfulContractFlow();
     vi.stubGlobal("navigator", {
       ...navigator,
       geolocation: {
@@ -618,8 +636,7 @@ describe("ExpoManage web app", () => {
 
     renderAt("/venda");
 
-    fireEvent.change(screen.getByLabelText("Assinante"), { target: { value: "Pedro Roger" } });
-    fireEvent.change(screen.getByLabelText("Documento do assinante"), { target: { value: "123.456.789-01" } });
+    submitValidInterest("Pedro Roger", "123.456.789-01");
     fireEvent.click(screen.getByLabelText("Li e aceito assinar este contrato digitalmente."));
     fireEvent.click(screen.getByRole("button", { name: "Assinar digitalmente" }));
 
@@ -639,7 +656,37 @@ describe("ExpoManage web app", () => {
     expect(screen.getByText("Traço capturado")).toBeInTheDocument();
   });
 
+  it("scrolls to a locked signature identity after submitting interest", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView
+    });
+    renderAt("/venda");
+
+    fireEvent.change(screen.getByLabelText("Nome completo ou razão social"), {
+      target: { value: "Maria Silva" }
+    });
+    fireEvent.change(screen.getByLabelText("Documento"), {
+      target: { value: "123.456.789-01" }
+    });
+    fireEvent.change(screen.getByLabelText("Telefone"), {
+      target: { value: "(85) 99999-1111" }
+    });
+    fireEvent.change(screen.getByLabelText("E-mail"), {
+      target: { value: "maria@example.com" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar solicitação" }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(screen.getByLabelText("Assinante")).toHaveValue("Maria Silva");
+    expect(screen.getByLabelText("Assinante")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Documento do assinante")).toHaveValue("123.456.789-01");
+    expect(screen.getByLabelText("Documento do assinante")).toHaveAttribute("readonly");
+  });
+
   it("retries signature geolocation when precise location is unavailable", async () => {
+    stubSuccessfulContractFlow();
     const getCurrentPosition = vi
       .fn()
       .mockImplementationOnce((_success: PositionCallback, error: PositionErrorCallback) =>
@@ -661,8 +708,7 @@ describe("ExpoManage web app", () => {
     });
     renderAt("/venda");
 
-    fireEvent.change(screen.getByLabelText("Assinante"), { target: { value: "Pedro Roger" } });
-    fireEvent.change(screen.getByLabelText("Documento do assinante"), { target: { value: "07.206.816/0001-15" } });
+    submitValidInterest("Pedro Roger", "123.456.789-01");
     fireEvent.click(screen.getByLabelText("Li e aceito assinar este contrato digitalmente."));
     const signaturePad = screen.getByLabelText("Campo para assinar com o dedo");
     fireEvent.pointerDown(signaturePad, { clientX: 20, clientY: 20, pointerId: 1 });
@@ -675,7 +721,7 @@ describe("ExpoManage web app", () => {
   });
 
   it("runs the real client sale flow through receipt upload", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ message: "API offline neste teste" }, 503)));
+    stubSuccessfulContractFlow();
     vi.stubGlobal("navigator", {
       ...navigator,
       geolocation: {
@@ -733,6 +779,53 @@ describe("ExpoManage web app", () => {
     });
 
     expect(within(profile).getByText("Em análise")).toBeInTheDocument();
+  });
+
+  it("does not create a payment profile with a fake contract when contract generation fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url === "http://localhost:3000/contracts/generate" && method === "POST") {
+        return jsonResponse({ message: "Não foi possível gerar o contrato." }, 503);
+      }
+
+      return jsonResponse({ message: "API offline neste teste" }, 503);
+    }));
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      geolocation: {
+        getCurrentPosition: vi.fn((success: PositionCallback) =>
+          success({
+            coords: {
+              latitude: -3.7319,
+              longitude: -38.5267,
+              accuracy: 12
+            } as GeolocationCoordinates,
+            timestamp: Date.now()
+          } as GeolocationPosition)
+        )
+      }
+    });
+    renderAt("/venda");
+
+    fireEvent.click(screen.getByRole("button", { name: "Disponível C-02 64m² selecionado" }));
+    fireEvent.change(screen.getByLabelText("Nome completo ou razão social"), { target: { value: "Maria Silva" } });
+    fireEvent.change(screen.getByLabelText("Documento"), { target: { value: "12345678901" } });
+    fireEvent.change(screen.getByLabelText("Telefone"), { target: { value: "(85) 99999-1111" } });
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "maria@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar solicitação" }));
+    fireEvent.change(screen.getByLabelText("Assinante"), { target: { value: "Maria Silva" } });
+    fireEvent.change(screen.getByLabelText("Documento do assinante"), { target: { value: "123.456.789-01" } });
+    fireEvent.click(screen.getByLabelText("Li e aceito assinar este contrato digitalmente."));
+    const signaturePad = screen.getByLabelText("Campo para assinar com o dedo");
+    fireEvent.pointerDown(signaturePad, { clientX: 20, clientY: 20, pointerId: 1 });
+    fireEvent.pointerMove(signaturePad, { clientX: 80, clientY: 44, pointerId: 1 });
+    fireEvent.pointerUp(signaturePad, { clientX: 120, clientY: 54, pointerId: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Assinar digitalmente" }));
+
+    expect(await screen.findByText("Não foi possível gerar o contrato. Tente assinar novamente.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Perfil do Cliente")).not.toBeInTheDocument();
   });
 
   it("syncs the real sales flow with the API", async () => {
@@ -943,6 +1036,57 @@ function markAdminLoggedIn() {
 function renderAt(path: string) {
   window.history.pushState({}, "", path);
   return render(<App />);
+}
+
+function submitValidInterest(name: string, document: string) {
+  fireEvent.change(screen.getByLabelText("Nome completo ou razão social"), {
+    target: { value: name }
+  });
+  fireEvent.change(screen.getByLabelText("Documento"), {
+    target: { value: document }
+  });
+  fireEvent.change(screen.getByLabelText("Telefone"), {
+    target: { value: "(85) 99999-1111" }
+  });
+  fireEvent.change(screen.getByLabelText("E-mail"), {
+    target: { value: "cliente@example.com" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Enviar solicitação" }));
+}
+
+function stubSuccessfulContractFlow() {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+
+    if (url === "http://localhost:3000/contracts/generate" && method === "POST") {
+      return jsonResponse({
+        id: "contract-test-c-02",
+        contractUrl: "s3://expomanage/contracts/generated/contract-test-c-02.docx"
+      });
+    }
+
+    if (url === "http://localhost:3000/purchases" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        eventSlug?: string;
+        clientName: string;
+        clientEmail: string;
+        clientDocument?: string;
+        contractUrl: string;
+      };
+
+      return jsonResponse(buildPurchaseProfile({
+        eventSlug: body.eventSlug,
+        clientName: body.clientName,
+        clientEmail: body.clientEmail,
+        clientDocument: body.clientDocument,
+        stand: { ...sampleStands[2], status: "reserved" },
+        contractUrl: body.contractUrl
+      }));
+    }
+
+    return jsonResponse({ message: "API offline neste teste" }, 503);
+  }));
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
