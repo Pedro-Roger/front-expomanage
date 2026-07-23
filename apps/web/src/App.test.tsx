@@ -484,6 +484,19 @@ describe("ExpoManage web app", () => {
     expect(within(standManager).getByText("Premium")).toBeInTheDocument();
   });
 
+  it("lets the admin select a stand from the map preview", async () => {
+    const user = userEvent.setup();
+    markAdminLoggedIn();
+    renderAt("/admin");
+
+    await user.click(screen.getByRole("button", { name: "Gerenciar stands" }));
+    await user.click(screen.getByRole("button", { name: "MAPA" }));
+
+    await user.click(screen.getByRole("button", { name: /A-04/ }));
+
+    expect(screen.getByText("Estande selecionado: A-04")).toBeInTheDocument();
+  });
+
   it("lets the admin create event stands from setup batches", async () => {
     const user = userEvent.setup();
     markAdminLoggedIn();

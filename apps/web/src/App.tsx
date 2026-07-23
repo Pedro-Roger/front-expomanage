@@ -51,6 +51,7 @@ import {
   type StandStatus
 } from "@expomanage/shared";
 import { expoApi, readFileAsDataUrl } from "./api";
+import { FestivalMap } from "./FestivalMap";
 
 type Feedback = {
   type: "error" | "success";
@@ -80,20 +81,6 @@ const fallbackPublicAssetBaseUrl = "https://lc-web-quero.s3.us-east-2.amazonaws.
 const publicAssetBaseUrl = import.meta.env.VITE_S3_PUBLIC_BASE_URL || fallbackPublicAssetBaseUrl;
 const shouldUseDemoData = import.meta.env.MODE === "test";
 
-function standNumber(stand: Stand) {
-  const numericCode = stand.code.match(/\d+/)?.[0] ?? "0";
-  return Number(numericCode);
-}
-
-function standMapLabel(stand: Stand) {
-  const numericCode = stand.code.match(/\d+/)?.[0];
-  return numericCode ?? stand.code;
-}
-
-function sortByStandNumber(first: Stand, second: Stand) {
-  return standNumber(first) - standNumber(second);
-}
-
 function formatStandModelSize(size: string) {
   const normalized = size.trim();
   const match = normalized.match(/^(\d+(?:[,.]\d+)?)\s*x\s*(\d+(?:[,.]\d+)?)$/i);
@@ -103,14 +90,6 @@ function formatStandModelSize(size: string) {
   }
 
   return `${match[1]}m x ${match[2]}m`;
-}
-
-function isBusinessStand(stand: Stand) {
-  return stand.code.startsWith("N-") || stand.type?.toLowerCase().includes("negócios");
-}
-
-function isFoodStand(stand: Stand) {
-  return stand.code.startsWith("G-") || stand.type?.toLowerCase().includes("gastron");
 }
 
 export function App() {
@@ -123,6 +102,7 @@ export function App() {
   const [size, setSize] = useState("");
   const [search, setSearch] = useState("");
   const [selectedStandId, setSelectedStandId] = useState(shouldUseDemoData ? "stand-c-02" : "");
+  const [selectedAdminStandId, setSelectedAdminStandId] = useState(shouldUseDemoData ? "stand-a-04" : "");
   const [documentType, setDocumentType] = useState<DocumentType>("cpf");
   const [interestName, setInterestName] = useState("");
   const [interestDocument, setInterestDocument] = useState("");
@@ -184,17 +164,9 @@ export function App() {
 
   const standSizeOptions = Array.from(new Set(stands.map((stand) => stand.size)));
   const visibleStands = filterStands(stands, { status, size, search });
-  const selectedStand = stands.find((stand) => stand.id === selectedStandId) ?? null;
   const selectedVisibleStand = visibleStands.find((stand) => stand.id === selectedStandId) ?? null;
   const selectedSellableStand =
     selectedVisibleStand && selectedVisibleStand.status !== "sold" ? selectedVisibleStand : null;
-  const businessMapStands = [...visibleStands].filter(isBusinessStand).sort(sortByStandNumber);
-  const foodMapStands = [...visibleStands].filter(isFoodStand).sort(sortByStandNumber);
-  const leftBusinessStands = businessMapStands
-    .filter((stand) => standNumber(stand) <= 40)
-    .sort((first, second) => standNumber(second) - standNumber(first));
-  const rightBusinessStands = businessMapStands.filter((stand) => standNumber(stand) > 40);
-  const fallbackMapStands = businessMapStands.length === 0 && foodMapStands.length === 0 ? visibleStands : [];
   const stats = buildDashboardStats(stands, []);
   const activePurchase = purchases.find((purchase) => purchase.id === activePurchaseId) ?? null;
   const validPurchases = purchases.filter((purchase) => Array.isArray(purchase.installments));
@@ -489,6 +461,7 @@ export function App() {
     setManagingEventSlug(slug);
     setManagedFormSlug(slug);
     setManagedFormLink(buildSalesFormLink(slug));
+    setSelectedAdminStandId("");
     setAdminView("eventManage");
   }
 
@@ -531,6 +504,7 @@ export function App() {
     setSize("");
     setSearch("");
     setSelectedStandId("");
+    setSelectedAdminStandId("");
     setSalesFormLink("");
     setPaymentConfig({
       eventSlug: slug,
@@ -574,6 +548,7 @@ export function App() {
     setSize("");
     setSearch("");
     setSelectedStandId(generatedStands[0].id);
+    setSelectedAdminStandId(generatedStands[0].id);
     setSignatureRecord(null);
     setSignaturePoints([]);
     setSalesFormLink("");
@@ -596,6 +571,7 @@ export function App() {
       setStands(savedStands);
       setPaymentConfig(savedPaymentConfig);
       setSelectedStandId(savedStands[0]?.id ?? "");
+      setSelectedAdminStandId(savedStands[0]?.id ?? "");
     } catch {
       setAdminNotice("Não consegui salvar o evento na API. Confira a conexão e tente novamente.");
     }
@@ -1087,98 +1063,12 @@ export function App() {
                 <span className="legend-item reserved">Reservado</span>
                 <span className="legend-item selected">Selecionado</span>
               </div>
-              {fallbackMapStands.length > 0 ? (
-                <div className="stand-map">
-                  {fallbackMapStands.map((stand) => (
-                    <button
-                      key={stand.id}
-                      className={`map-stand ${stand.status} ${selectedStand?.id === stand.id ? "is-selected" : ""}`}
-                      disabled={stand.status !== "available" && selectedStand?.id !== stand.id}
-                      onClick={() => reserveStand(stand)}
-                      aria-pressed={selectedStand?.id === stand.id}
-                      aria-label={`${standStatusLabels[stand.status]} ${stand.code} ${stand.size}${selectedStand?.id === stand.id ? " selecionado" : ""}`}
-                    >
-                      <strong>{stand.code}</strong>
-                      <span>{stand.size}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="festival-map">
-                  <div className="food-zone">
-                    <strong>Feira Gastronômica</strong>
-                    <span>Av. Cel. Alexanzito</span>
-                    <div className="food-stands-grid">
-                      {foodMapStands.map((stand) => (
-                        <button
-                          key={stand.id}
-                          className={`map-stand mini ${stand.status} ${selectedStand?.id === stand.id ? "is-selected" : ""}`}
-                          disabled={stand.status !== "available" && selectedStand?.id !== stand.id}
-                          onClick={() => reserveStand(stand)}
-                          aria-pressed={selectedStand?.id === stand.id}
-                          aria-label={`${standStatusLabels[stand.status]} ${stand.code} ${stand.size}${selectedStand?.id === stand.id ? " selecionado" : ""}`}
-                        >
-                          <strong>{standMapLabel(stand)}</strong>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="event-avenue">
-                    <aside className="landmarks left" aria-hidden="true">
-                      <span>Praça Doutor Leite</span>
-                      <span>Sefaz</span>
-                      <span>Teatro Francisca Clotilde</span>
-                      <span>Instituto do Museu Jaguaribano</span>
-                    </aside>
-
-                    <div className="business-zone">
-                      <span className="street-label">Feira de Negócios</span>
-                      <div className="business-column">
-                        {leftBusinessStands.map((stand) => (
-                          <button
-                            key={stand.id}
-                            className={`map-stand slim ${stand.status} ${selectedStand?.id === stand.id ? "is-selected" : ""}`}
-                            disabled={stand.status !== "available" && selectedStand?.id !== stand.id}
-                            onClick={() => reserveStand(stand)}
-                            aria-pressed={selectedStand?.id === stand.id}
-                            aria-label={`${standStatusLabels[stand.status]} ${stand.code} ${stand.size}${selectedStand?.id === stand.id ? " selecionado" : ""}`}
-                          >
-                            <strong>{standMapLabel(stand)}</strong>
-                          </button>
-                        ))}
-                      </div>
-                      <div className="central-walkway" aria-hidden="true">
-                        {Array.from({ length: 10 }, (_, index) => (
-                          <span key={index} />
-                        ))}
-                      </div>
-                      <div className="business-column">
-                        {rightBusinessStands.map((stand) => (
-                          <button
-                            key={stand.id}
-                            className={`map-stand slim ${stand.status} ${selectedStand?.id === stand.id ? "is-selected" : ""}`}
-                            disabled={stand.status !== "available" && selectedStand?.id !== stand.id}
-                            onClick={() => reserveStand(stand)}
-                            aria-pressed={selectedStand?.id === stand.id}
-                            aria-label={`${standStatusLabels[stand.status]} ${stand.code} ${stand.size}${selectedStand?.id === stand.id ? " selecionado" : ""}`}
-                          >
-                            <strong>{standMapLabel(stand)}</strong>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <aside className="map-legend-card" aria-hidden="true">
-                      <span><i className="legend-swatch business" /> Feira de Negócios</span>
-                      <span><i className="legend-swatch food" /> Feira Gastronômica</span>
-                      <span><i className="legend-swatch kids" /> Espaço Kids</span>
-                      <span><i className="legend-swatch stage" /> Palco</span>
-                      <span><i className="legend-swatch restroom" /> Banheiros</span>
-                    </aside>
-                  </div>
-                </div>
-              )}
+              <FestivalMap
+                stands={visibleStands}
+                mode="public"
+                selectedStandId={selectedStandId}
+                onStandClick={reserveStand}
+              />
             </section>
 
             <section className="interest-panel" id="formulario-venda" aria-label="Formulário de Interesse">
@@ -1546,21 +1436,12 @@ export function App() {
                 </div>
 
                 {standManagerMode === "map" ? (
-                  <aside className="stand-map-preview" aria-label="Prévia do mapa do evento">
-                    <div className="stand-map-preview-grid">
-                      <div>
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <span key={`map-left-${index}`}>{String(index + 1).padStart(2, "0")}</span>
-                        ))}
-                      </div>
-                      <div>
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <span key={`map-right-${index}`}>{String(index + 6).padStart(2, "0")}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <p>nome da rua</p>
-                  </aside>
+                  <FestivalMap
+                    stands={stands}
+                    mode="admin"
+                    selectedStandId={selectedAdminStandId}
+                    onStandClick={(stand) => setSelectedAdminStandId(stand.id)}
+                  />
                 ) : null}
 
                 {standManagerMode === "config" ? (
