@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
 import {
-  Bell,
   BookmarkPlus,
+  Plus,
   Building2,
   CheckCircle2,
   Copy,
@@ -170,6 +170,7 @@ export function App() {
   ];
   const draftEventSlug = slugify(eventFormSlug || eventName);
   const draftSalesFormLink = buildSalesFormLink(draftEventSlug);
+  const draftStands = generateStandsFromBatches(eventBatches, draftEventSlug);
 
   const standSizeOptions = Array.from(new Set(stands.map((stand) => stand.size)));
   const visibleStands = filterStands(stands, { status, size, search });
@@ -285,9 +286,13 @@ export function App() {
       setInterestName(company.legalName);
       setLastCnpjLookup(digits);
       setCnpjLookupNotice("Dados do CNPJ preenchidos automaticamente.");
-    } catch {
+    } catch (error) {
       setLastCnpjLookup("");
-      setCnpjLookupNotice("Não foi possível consultar este CNPJ agora.");
+      setCnpjLookupNotice(
+        error instanceof Error && error.message
+          ? error.message
+          : "Não foi possível consultar este CNPJ agora."
+      );
     }
   }
 
@@ -436,6 +441,24 @@ export function App() {
     const rows = ["code,size,status", ...stands.map((stand) => `${stand.code},${stand.size},${stand.status}`)];
     void navigator.clipboard?.writeText(rows.join("\n"));
     setAdminNotice("CSV pronto para exportação.");
+  }
+
+  function addEventBatch() {
+    setEventBatches((current) => [
+      ...current,
+      {
+        quantity: 10,
+        size: "3x3",
+        type: "",
+        prefix: "",
+        price: 0,
+        installments: defaultPaymentInstallments()
+      }
+    ]);
+  }
+
+  function removeEventBatch(index: number) {
+    setEventBatches((current) => current.filter((_, batchIndex) => batchIndex !== index));
   }
 
   function updateEventBatch(index: number, field: keyof EventStandBatch, value: string) {
@@ -1054,10 +1077,6 @@ export function App() {
                 Sair
               </button>
             ) : null}
-            <button className="icon-button" aria-label="Notificações">
-              <Bell size={18} />
-            </button>
-            <div className="avatar">AM</div>
           </div>
         </header>
       ) : null}
@@ -1624,52 +1643,78 @@ export function App() {
               {eventCreationStep === 2 ? (
                 <div className="wizard-card">
                   <span className="wizard-kicker">Passo 2 de 4</span>
-                  <h4>Modelos e quantidade de stands</h4>
+                  <h4>Stands do evento</h4>
+                  <p className="wizard-help">
+                    Cada lote gera os estandes automaticamente, com numeração sequencial e o mesmo preço e parcelas.
+                    A prévia do mapa é atualizada em tempo real conforme você edita os lotes.
+                  </p>
                   <div className="batch-grid" aria-label="Lotes de estandes do evento">
                     {eventBatches.map((batch, index) => (
-                      <div className="batch-row" key={`batch-${index + 1}`}>
-                        <strong>Lote {index + 1}</strong>
-                        <label>
-                          Quantidade lote {index + 1}
-                          <input
-                            min="0"
-                            type="number"
-                            value={batch.quantity}
-                            onChange={(event) => updateEventBatch(index, "quantity", event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          Tamanho lote {index + 1}
-                          <input
-                            value={batch.size}
-                            onChange={(event) => updateEventBatch(index, "size", event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          Tipo lote {index + 1}
-                          <input
-                            value={batch.type}
-                            onChange={(event) => updateEventBatch(index, "type", event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          Prefixo lote {index + 1}
-                          <input
-                            maxLength={4}
-                            value={batch.prefix ?? ""}
-                            onChange={(event) => updateEventBatch(index, "prefix", event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          Preço lote {index + 1}
-                          <input
-                            min="0"
-                            step="0.01"
-                            type="number"
-                            value={batch.price ?? 0}
-                            onChange={(event) => updateEventBatch(index, "price", event.target.value)}
-                          />
-                        </label>
+                      <article className="batch-card" key={`batch-${index + 1}`}>
+                        <header className="batch-card-head">
+                          <strong>Lote {index + 1}{batch.type.trim() ? ` · ${batch.type}` : ""}</strong>
+                          {eventBatches.length > 1 ? (
+                            <button
+                              className="batch-remove"
+                              type="button"
+                              onClick={() => removeEventBatch(index)}
+                              aria-label={`Remover lote ${index + 1}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          ) : null}
+                        </header>
+                        <div className="batch-fields">
+                          <label>
+                            Quantidade
+                            <input
+                              aria-label={`Quantidade lote ${index + 1}`}
+                              min="0"
+                              type="number"
+                              value={batch.quantity}
+                              onChange={(event) => updateEventBatch(index, "quantity", event.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Tamanho
+                            <input
+                              aria-label={`Tamanho lote ${index + 1}`}
+                              placeholder="3x3"
+                              value={batch.size}
+                              onChange={(event) => updateEventBatch(index, "size", event.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Tipo
+                            <input
+                              aria-label={`Tipo lote ${index + 1}`}
+                              placeholder="Feira de Negócios"
+                              value={batch.type}
+                              onChange={(event) => updateEventBatch(index, "type", event.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Prefixo
+                            <input
+                              aria-label={`Prefixo lote ${index + 1}`}
+                              maxLength={4}
+                              placeholder="N"
+                              value={batch.prefix ?? ""}
+                              onChange={(event) => updateEventBatch(index, "prefix", event.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Preço (R$)
+                            <input
+                              aria-label={`Preço lote ${index + 1}`}
+                              min="0"
+                              step="0.01"
+                              type="number"
+                              value={batch.price ?? 0}
+                              onChange={(event) => updateEventBatch(index, "price", event.target.value)}
+                            />
+                          </label>
+                        </div>
                         <div className="batch-installments" aria-label={`Parcelas do lote ${index + 1}`}>
                           <div className="batch-installments-head">
                             <span>Parcelas</span>
@@ -1684,8 +1729,9 @@ export function App() {
                           {(batch.installments ?? []).map((installment, installmentIndex) => (
                             <div className="batch-installment-row" key={`${batch.id ?? index}-${installmentIndex}`}>
                               <label>
-                                Nome parcela {installmentIndex + 1} do lote {index + 1}
+                                Nome
                                 <input
+                                  aria-label={`Nome parcela ${installmentIndex + 1} do lote ${index + 1}`}
                                   value={installment.label}
                                   onChange={(event) => updateBatchInstallment(
                                     index,
@@ -1696,8 +1742,9 @@ export function App() {
                                 />
                               </label>
                               <label>
-                                Valor parcela {installmentIndex + 1} do lote {index + 1}
+                                Valor (R$)
                                 <input
+                                  aria-label={`Valor parcela ${installmentIndex + 1} do lote ${index + 1}`}
                                   min="0"
                                   step="0.01"
                                   type="number"
@@ -1711,8 +1758,10 @@ export function App() {
                                 />
                               </label>
                               <label>
-                                Vencimento parcela {installmentIndex + 1} do lote {index + 1}
+                                Vencimento
                                 <input
+                                  aria-label={`Vencimento parcela ${installmentIndex + 1} do lote ${index + 1}`}
+                                  placeholder="Agosto/2026"
                                   value={installment.dueLabel}
                                   onChange={(event) => updateBatchInstallment(
                                     index,
@@ -1727,15 +1776,27 @@ export function App() {
                                   className="batch-installment-remove"
                                   type="button"
                                   onClick={() => removeBatchInstallment(index, installmentIndex)}
+                                  aria-label={`Remover parcela ${installmentIndex + 1} do lote ${index + 1}`}
                                 >
-                                  Remover parcela
+                                  <Trash2 size={15} />
                                 </button>
                               ) : null}
                             </div>
                           ))}
                         </div>
-                      </div>
+                      </article>
                     ))}
+                    <button className="batch-add" type="button" onClick={addEventBatch}>
+                      <Plus size={17} />
+                      Adicionar lote
+                    </button>
+                  </div>
+                  <div className="wizard-map-preview" aria-label="Prévia do mapa gerada pelos lotes">
+                    <div className="wizard-map-preview-head">
+                      <strong>Prévia do mapa</strong>
+                      <span>{draftStands.length} estandes serão gerados</span>
+                    </div>
+                    <FestivalMap stands={draftStands} mode="public" onStandClick={() => {}} />
                   </div>
                   <div className="wizard-actions">
                     <button className="secondary-action" type="button" onClick={() => goToEventCreationStep(1)}>
@@ -1787,7 +1848,7 @@ export function App() {
                   <div className="review-grid">
                     <span>Evento<strong>{eventName || "Nome pendente"}</strong></span>
                     <span>URL<strong>{draftEventSlug || "url-pendente"}</strong></span>
-                    <span>Stands<strong>{generateStandsFromBatches(eventBatches, draftEventSlug).length}</strong></span>
+                    <span>Stands<strong>{draftStands.length}</strong></span>
                     <span>PIX<strong>{paymentConfig.pixCopyPaste.trim() ? "Configurado" : "Pode configurar depois"}</strong></span>
                   </div>
                   <div className="wizard-actions">

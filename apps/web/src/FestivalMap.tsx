@@ -1,4 +1,4 @@
-import { Landmark, MapPinned, Sparkles, Trees } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { type Stand, standStatusLabels } from "@expomanage/shared";
 
 export type FestivalMapMode = "public" | "admin";
@@ -16,6 +16,20 @@ type StandGroup = {
   food: Stand[];
   fallback: Stand[];
 };
+
+type LeftSideItem =
+  | { kind: "street"; label: string }
+  | { kind: "landmark"; label: string; detail: string };
+
+const leftSideItems: LeftSideItem[] = [
+  { kind: "street", label: "Rua Santos Dumont" },
+  { kind: "landmark", label: "Sefaz", detail: "Serviços públicos" },
+  { kind: "street", label: "Tv. Cel. Valente" },
+  { kind: "landmark", label: "Teatro Francisca Clotilde", detail: "Simpósio" },
+  { kind: "street", label: "R. Barão de Messejanas" },
+  { kind: "landmark", label: "Instituto do Museu Jaguaribano", detail: "Referência local" },
+  { kind: "landmark", label: "Aracaty Club", detail: "Clube social" }
+];
 
 function standNumber(stand: Stand) {
   const numericCode = stand.code.match(/\d+/)?.[0] ?? "0";
@@ -78,6 +92,7 @@ function StandButton({
       onClick={() => onClick(stand)}
       aria-pressed={isSelected}
       aria-label={buildStandAriaLabel(stand, isSelected)}
+      title={`${stand.code} · ${stand.size} · ${standStatusLabels[stand.status]}`}
     >
       <strong>{standMapLabel(stand)}</strong>
       <span>{stand.size}</span>
@@ -85,19 +100,28 @@ function StandButton({
   );
 }
 
+function WalkwayTrees({ count }: { count: number }) {
+  return (
+    <div className="fmap-walkway" aria-hidden="true">
+      {Array.from({ length: count }, (_, index) => (
+        <span key={index} className={index % 2 === 0 ? "fmap-tree" : "fmap-bench"} />
+      ))}
+    </div>
+  );
+}
+
 export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: FestivalMapProps) {
   const groups = groupStands(stands);
   const selectedStand = stands.find((stand) => stand.id === selectedStandId) ?? null;
   const isFestivalLayout = groups.businessLeft.length > 0 || groups.businessRight.length > 0 || groups.food.length > 0;
+  const businessTotal = groups.businessLeft.length + groups.businessRight.length;
+  const walkwayTreeCount = Math.min(16, Math.max(4, Math.ceil(groups.businessLeft.length / 3)));
 
   return (
     <div
       className={`festival-map-shell ${mode === "admin" ? "is-admin" : "is-public"}`}
       aria-label={mode === "admin" ? "Prévia do mapa do evento" : "Mapa interativo do evento"}
     >
-      <div className="festival-map-orbit festival-map-orbit-one" aria-hidden="true" />
-      <div className="festival-map-orbit festival-map-orbit-two" aria-hidden="true" />
-
       <div className="festival-map-header">
         <div className="festival-map-header-copy">
           <span>Mapa interativo</span>
@@ -116,57 +140,55 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
       ) : null}
 
       {isFestivalLayout ? (
-        <div className="festival-map-canvas">
-          <section className="festival-map-food-zone" aria-label="Feira Gastronômica">
-            <div className="festival-map-zone-tag">
-              <MapPinned size={14} />
-              <span>Feira Gastronômica</span>
+        <div className="fmap">
+          <div className="fmap-top">
+            <div className="fmap-praca" aria-hidden="true">
+              <span className="fmap-restrooms">20 Banheiros Químicos</span>
+              <strong>Praça Doutor Leite</strong>
+              <em>Espaço Kids</em>
+              <span className="fmap-stage">Palco</span>
             </div>
-            <div className="festival-map-road-label">Av. Cel. Alexanzito</div>
-            <div className="festival-map-food-grid">
-              {groups.food.map((stand) => (
-                <StandButton
-                  key={stand.id}
-                  stand={stand}
-                  isSelected={selectedStand?.id === stand.id}
-                  mode={mode}
-                  onClick={onStandClick}
-                />
-              ))}
-            </div>
-          </section>
 
-          <div className="festival-map-main">
-            <aside className="festival-map-landmarks" aria-hidden="true">
-              <article className="festival-landmark festival-landmark--purple">
-                <Trees size={28} />
-                <strong>Praça Doutor Leite</strong>
-                <span>Área kids e descanso</span>
-              </article>
-              <article className="festival-landmark festival-landmark--white">
-                <Landmark size={28} />
-                <strong>Sefaz</strong>
-                <span>Serviços públicos</span>
-              </article>
-              <article className="festival-landmark festival-landmark--white">
-                <Landmark size={28} />
-                <strong>Teatro Francisca Clotilde</strong>
-                <span>Espaço cultural</span>
-              </article>
-              <article className="festival-landmark festival-landmark--white">
-                <Landmark size={28} />
-                <strong>Instituto do Museu Jaguaribano</strong>
-                <span>Referência local</span>
-              </article>
+            <div className="fmap-top-right">
+              <section className="fmap-food" aria-label="Feira Gastronômica">
+                <header>Feira Gastronômica</header>
+                <div className="fmap-food-grid">
+                  {groups.food.map((stand) => (
+                    <StandButton
+                      key={stand.id}
+                      stand={stand}
+                      isSelected={selectedStand?.id === stand.id}
+                      mode={mode}
+                      onClick={onStandClick}
+                    />
+                  ))}
+                </div>
+                <div className="fmap-food-road">Av. Cel. Alexanzito</div>
+              </section>
+              <div className="fmap-cross-street" aria-hidden="true">Tv. Rad. Carlos Kramer</div>
+              <div className="fmap-truck" aria-hidden="true">Carreta · Workshops</div>
+            </div>
+          </div>
+
+          <div className="fmap-body">
+            <aside className="fmap-side fmap-side--left" aria-hidden="true">
+              <span className="fmap-street-vertical">R. Padre de Sá Leitão</span>
+              <div className="fmap-side-items">
+                {leftSideItems.map((item) =>
+                  item.kind === "street" ? (
+                    <span className="fmap-street" key={item.label}>{item.label}</span>
+                  ) : (
+                    <article className="fmap-landmark" key={item.label}>
+                      <strong>{item.label}</strong>
+                      <span>{item.detail}</span>
+                    </article>
+                  )
+                )}
+              </div>
             </aside>
 
-            <section className="festival-map-business-zone" aria-label="Feira de Negócios">
-              <div className="festival-map-zone-tag festival-map-zone-tag--business">
-                <MapPinned size={14} />
-                <span>Feira de Negócios</span>
-              </div>
-
-              <div className="festival-map-business-grid">
+            <section className="fmap-business" aria-label="Feira de Negócios">
+              <div className="fmap-business-grid">
                 <div className="festival-map-column" aria-label="Coluna esquerda da Feira de Negócios">
                   {groups.businessLeft.map((stand) => (
                     <StandButton
@@ -179,11 +201,7 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
                   ))}
                 </div>
 
-                <div className="festival-map-walkway" aria-hidden="true">
-                  {Array.from({ length: 8 }, (_, index) => (
-                    <span key={index} />
-                  ))}
-                </div>
+                <WalkwayTrees count={walkwayTreeCount} />
 
                 <div className="festival-map-column" aria-label="Coluna direita da Feira de Negócios">
                   {groups.businessRight.map((stand) => (
@@ -197,42 +215,32 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
                   ))}
                 </div>
               </div>
-
-              <div className="festival-map-street festival-map-street--bottom">Av. Cel. Alexanzito</div>
             </section>
 
-            <aside className="festival-map-legend" aria-hidden="true">
-              <div className="festival-map-legend-card">
-                <span><i className="festival-swatch business" /> Feira de Negócios</span>
-                <span><i className="festival-swatch food" /> Feira Gastronômica</span>
-                <span><i className="festival-swatch kids" /> Espaço Kids</span>
-                <span><i className="festival-swatch stage" /> Palco</span>
-                <span><i className="festival-swatch restroom" /> Banheiros</span>
-              </div>
+            <aside className="fmap-side fmap-side--right" aria-hidden="true">
+              <span className="fmap-street-vertical">R. Padre de Sá Leitão</span>
             </aside>
           </div>
+
+          <div className="fmap-avenue" aria-hidden="true">
+            <span className="fmap-crosswalk" />
+            <span>Av. Cel. Alexanzito</span>
+            <span className="fmap-crosswalk" />
+          </div>
+
+          <aside className="fmap-legend" aria-hidden="true">
+            <span><i className="festival-swatch business" /> Feira de Negócios ({businessTotal} estandes)</span>
+            <span><i className="festival-swatch food" /> Feira Gastronômica ({groups.food.length} barracas)</span>
+            <span><i className="festival-swatch kids" /> Espaço Kids</span>
+            <span><i className="festival-swatch stage" /> Espaço de Entretenimento</span>
+            <span><i className="festival-swatch restroom" /> Banheiros Químicos</span>
+          </aside>
         </div>
       ) : (
-        <div className="festival-map-canvas festival-map-canvas--fallback">
-          <aside className="festival-map-landmarks" aria-hidden="true">
-            <article className="festival-landmark festival-landmark--purple">
-              <Trees size={28} />
-              <strong>Praça Doutor Leite</strong>
-              <span>Área kids e descanso</span>
-            </article>
-            <article className="festival-landmark festival-landmark--white">
-              <Landmark size={28} />
-              <strong>Entorno do evento</strong>
-              <span>Mapa compacto para seleção rápida</span>
-            </article>
-          </aside>
-
-          <section className="festival-map-fallback-zone" aria-label="Mapa compacto de estandes">
-            <div className="festival-map-zone-tag festival-map-zone-tag--fallback">
-              <MapPinned size={14} />
-              <span>Seleção rápida</span>
-            </div>
-            <div className="festival-map-fallback-grid">
+        <div className="fmap fmap--fallback">
+          <section className="fmap-fallback-zone" aria-label="Mapa compacto de estandes">
+            <header aria-hidden="true">Seleção rápida</header>
+            <div className="fmap-fallback-grid">
               {groups.fallback.map((stand) => (
                 <StandButton
                   key={stand.id}
@@ -244,13 +252,10 @@ export function FestivalMap({ stands, mode, selectedStandId, onStandClick }: Fes
               ))}
             </div>
           </section>
-
-          <aside className="festival-map-legend" aria-hidden="true">
-            <div className="festival-map-legend-card">
-              <span><i className="festival-swatch business" /> Disponível</span>
-              <span><i className="festival-swatch food" /> Vendido</span>
-              <span><i className="festival-swatch stage" /> Reservado</span>
-            </div>
+          <aside className="fmap-legend fmap-legend--inline" aria-hidden="true">
+            <span><i className="festival-swatch business" /> Disponível</span>
+            <span><i className="festival-swatch stage" /> Vendido</span>
+            <span><i className="festival-swatch restroom" /> Reservado</span>
           </aside>
         </div>
       )}
