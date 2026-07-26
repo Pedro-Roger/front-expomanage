@@ -2015,6 +2015,11 @@ textarea {
 .wizard-map-preview .festival-map-shell {
   max-height: 540px;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wizard-map-preview .festival-map-stand {
+  cursor: default;
   pointer-events: none;
 }
 
