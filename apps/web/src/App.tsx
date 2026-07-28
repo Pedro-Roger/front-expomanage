@@ -439,8 +439,20 @@ export function App() {
 
   function exportCsv() {
     const rows = ["code,size,status", ...stands.map((stand) => `${stand.code},${stand.size},${stand.status}`)];
-    void navigator.clipboard?.writeText(rows.join("\n"));
-    setAdminNotice("CSV pronto para exportação.");
+    const csvContent = rows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const fileName = `estandes-${activeEventSlug || "expomanage"}.csv`;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    setAdminNotice("CSV baixado.");
   }
 
   function addEventBatch() {
