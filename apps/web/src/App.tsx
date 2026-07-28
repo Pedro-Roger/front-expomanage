@@ -8,7 +8,6 @@ import {
   Download,
   ExternalLink,
   FileSignature,
-  LayoutDashboard,
   ListFilter,
   LogOut,
   LocateFixed,
@@ -53,6 +52,7 @@ import {
 } from "@expomanage/shared";
 import { expoApi, readFileAsDataUrl } from "./api";
 import { FestivalMap } from "./FestivalMap";
+import festivalLogo from "./assets/logofest.png";
 
 type Feedback = {
   type: "error" | "success";
@@ -1064,8 +1064,7 @@ export function App() {
       {!isLoginRoute && !isAdminRoute ? (
         <header className="topbar">
           <div className="brand">
-            <LayoutDashboard size={22} />
-            <h1>ExpoManage</h1>
+            <img className="brand-logo" src={festivalLogo} alt="II Festival do Camarão do Vale do Jaguaribe" />
           </div>
           <div className="topbar-actions">
             <a className="topbar-link" href={isAdminRoute ? buildSalesFormLink(activeEventSlug) : "/"}>
@@ -1085,13 +1084,8 @@ export function App() {
         {isLoginRoute ? (
           <section className="login-panel" aria-labelledby="login-title">
             <div className="login-brand">
-              <div className="brand-mark">
-                <LayoutDashboard size={24} />
-              </div>
-              <div>
-                <span>ExpoManage</span>
-                <strong>Painel de eventos</strong>
-              </div>
+              <img className="brand-logo brand-logo-lg" src={festivalLogo} alt="II Festival do Camarão do Vale do Jaguaribe" />
+              <strong>Painel de eventos</strong>
             </div>
             <div className="login-access-card">
               <h2 className="sr-only" id="login-title">Login ExpoManage</h2>
@@ -1397,9 +1391,8 @@ export function App() {
           />
           <aside className="admin-sidebar" aria-label="Menu administrativo">
             <div className="admin-sidebar-brand">
-              <LayoutDashboard size={24} />
+              <img className="brand-logo" src={festivalLogo} alt="II Festival do Camarão do Vale do Jaguaribe" />
               <div className="admin-sidebar-brand-copy">
-                <strong>ExpoManage</strong>
                 <span>Painel administrativo</span>
               </div>
               <button

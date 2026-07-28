@@ -181,7 +181,7 @@ describe("ExpoManage web app", () => {
   it("renders only the public sales flow on the client route", () => {
     renderAt("/venda");
 
-    expect(screen.getByRole("heading", { name: "ExpoManage" })).toBeInTheDocument();
+    expect(screen.getByAltText("II Festival do Camarão do Vale do Jaguaribe")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Reserva de Estandes" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/");
     expect(screen.queryByRole("button", { name: "Prosseguir" })).not.toBeInTheDocument();
@@ -192,7 +192,7 @@ describe("ExpoManage web app", () => {
     markAdminLoggedIn();
     renderAt("/admin");
 
-    expect(screen.getByText("ExpoManage")).toBeInTheDocument();
+    expect(screen.getByAltText("II Festival do Camarão do Vale do Jaguaribe")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Dashboard Administrativo" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "Meus eventos" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { name: "Solicitações Recebidas" })).not.toBeInTheDocument();

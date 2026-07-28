@@ -345,33 +345,25 @@ h3 {
 .login-brand {
   align-items: center;
   color: var(--primary);
-  display: flex;
-  gap: 12px;
-}
-
-.brand-mark {
-  align-items: center;
-  background: #e6f2ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 14px;
-  display: flex;
-  height: 48px;
-  justify-content: center;
-  width: 48px;
-}
-
-.login-brand span {
-  display: block;
-  font-size: 24px;
-  font-weight: 950;
-  letter-spacing: -0.04em;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
 }
 
 .login-brand strong {
   color: var(--muted);
   display: block;
   font-size: 13px;
-  margin-top: 2px;
+}
+
+.brand-logo {
+  height: 34px;
+  width: auto;
+}
+
+.brand-logo-lg {
+  height: 64px;
 }
 
 .login-access-card {
